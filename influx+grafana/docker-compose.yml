@@ -1,0 +1,38 @@
+version: "3"
+
+services:
+  influxdb:
+    image: influxdb:latest
+    container_name: influxdb
+    volumes:
+      - influxdb-storage:/var/lib/influxdb2:rw
+      - ./entrypoint.sh:/entrypoint.sh
+    env_file:
+      - .env
+    entrypoint: ["./entrypoint.sh"]
+    restart: on-failure:10
+    ports:
+      - ${DOCKER_INFLUXDB_INIT_PORT}:8086
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    volumes:
+      - grafana-storage:/var/lib/grafana:rw
+    depends_on:
+      - influxdb
+    ports:
+      - ${GRAFANA_PORT}:3000
+
+  data_streamer:
+    build: .
+    container_name: data_streamer
+    depends_on:
+      - influxdb
+    restart: on-failure:5
+    env_file:
+      - .env
+
+volumes:
+  grafana-storage:
+  influxdb-storage:
