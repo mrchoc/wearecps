@@ -5,6 +5,8 @@ import math
 from datetime import datetime
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
+from sensors import air_sensor, current_sensor_voltage, current_sensor_power, ir_temp, cold_side_temp, hot_side_temp, rpm_sensor
+from ds18b20 import DS18B20
 import os
 
 # InfluxDB Configuration
@@ -16,6 +18,8 @@ INFLUXDB_BUCKET = os.getenv('INFLUXDB_BUCKET', 'teg_rotor')
 # Simulation parameters
 RPM_BASELINE = 1200  # RPM threshold for fan activation
 RPM_OPTIMAL = 1500   # Target RPM when fan is active
+
+cold_side_sensor = DS18B20("0000007c086a", False)
 
 class TEGRotorSimulator:
     def __init__(self):
@@ -46,6 +50,15 @@ class TEGRotorSimulator:
         print(f"Writing to bucket: {INFLUXDB_BUCKET}")
         print("Starting TEG Rotor simulation with dynamic data generation...")
         print("="*60)
+
+    def update_values(self):
+        self.rpm = float(rpm_sensor())
+        self.teg_hot_temp = float(hot_side_temp())
+        self.teg_cold_temp = float(cold_side_temp(cold_side_sensor))
+        self.ambient_temp = float(air_sensor())
+        self.rotor_surface_temp = float(ir_temp())
+        self.teg_voltage = float(current_sensor_voltage())
+        self.fan_power = float(current_sensor_power())
     
     def simulate_physics(self):
         """Simulate realistic physics with continuous variation"""
@@ -214,7 +227,8 @@ class TEGRotorSimulator:
         iteration = 0
         try:
             while True:
-                self.simulate_physics()
+                #self.simulate_physics()
+                self.update_values()
                 self.write_data()
                 
                 # Print status every 5 iterations
