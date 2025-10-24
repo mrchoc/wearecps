@@ -5,6 +5,24 @@ import math
 from datetime import datetime
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
+#IR
+from smbus2 import SMBus
+from mlx90614 import MLX90614
+#current
+from ina219 import INA219
+from ina219 import DeviceRangeError
+#air
+import smbus2
+import bme280
+#cold side
+from ds18b20 import DS18B20
+#rpm
+import RPi.GPIO as GPIO
+#hot side
+import max6675
+
+
+
 import os
 
 # InfluxDB Configuration
@@ -17,204 +35,195 @@ INFLUXDB_BUCKET = os.getenv('INFLUXDB_BUCKET', 'teg_rotor')
 RPM_BASELINE = 1200  # RPM threshold for fan activation
 RPM_OPTIMAL = 1500   # Target RPM when fan is active
 
+#for current sensor
+SHUNT_OHMS = 0.1
+
+#for air sensor temp unit conversion
+def celsius_to_fahrenheit(c):
+    return (c * 9/5) + 32
+
+
+
 class TEGRotorSimulator:
     def __init__(self):
         self.client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
         self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
         
-        # System state with realistic starting values
-        self.rpm = random.uniform(1350, 1450)
-        self.fan_active = False
+        # ---- Sensor setup ---- #
+        # IR sensor
+        self.bus = SMBus(1)
+        self.ir_sensor = MLX90614(self.bus, address=0x5A)
+
+        # Current sensor
+        self.current_sensor = INA219(SHUNT_OHMS, busnum=1)
+        self.current_sensor.configure()
+
+        # Air sensor
+        self.bus = smbus2.SMBus(1)
+        self.bme280_address = 0x76
+        self.bme280_calibration_params = bme280.load_calibration_params(self.bus, self.bme280_address)
+
+        #cold side sensor
+        self.ds18b20_sensor = DS18B20()
+
+        #rpm sensor
+        self.SENSOR_PIN = 17
+        self.MARKS_PER_REV = 1
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.SENSOR_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+        self.pulse_count = 0
+        self.last_time = time.time()
+
+        def pulse_callback(channel):
+            self.pulse_count += 1
+
+        GPIO.add_event_detect(self.SENSOR_PIN, GPIO.FALLING, callback=pulse_callback, bouncetime=5)
+
+        #hot side
+        self.cs = 19   # Chip Select
+        self.sck = 23  # Serial Clock
+        self.so = 21   # Serial Output
+        max6675.set_pin(self.cs, self.sck, self.so, 1)  # use Celsius output
+
+
+        # ---- ----- #
+
+
+        # System state variables
         self.time_elapsed = 0
-        
-        # Temperature state (Celsius) - initial values
-        self.teg_hot_temp = random.uniform(83, 87)
-        self.teg_cold_temp = random.uniform(33, 37)
-        self.ambient_temp = random.uniform(26, 30)
-        self.rotor_surface_temp = random.uniform(72, 78)
-        
-        # Voltage state (Volts)
-        self.teg_voltage = 0.0
-        self.fan_power = 0.0
-        
-        # Trend variables for smooth changes
-        self.rpm_trend = 0
-        self.ambient_trend = random.uniform(-0.05, 0.05)
-        self.load_variation = random.uniform(0.8, 1.2)  # Simulates varying mechanical load
-        
+        self.rpm = 0
+
         print(f"Connected to InfluxDB at {INFLUXDB_URL}")
         print(f"Writing to bucket: {INFLUXDB_BUCKET}")
-        print("Starting TEG Rotor simulation with dynamic data generation...")
+        print("Starting TEG Rotor sensor data collection...")
         print("="*60)
     
-    def simulate_physics(self):
-        """Simulate realistic physics with continuous variation"""
-        
-        self.time_elapsed += 1
-        
-        # === RPM DYNAMICS ===
-        # Natural decay with varying friction (simulates bearing wear, dust, etc.)
-        friction_factor = 1.0 + 0.3 * math.sin(self.time_elapsed * 0.01)  # Periodic variation
-        rpm_decay = random.uniform(0.8, 1.5) * friction_factor
-        
-        # Add mechanical load variations (simulates real-world usage)
-        self.load_variation += random.uniform(-0.05, 0.05)
-        self.load_variation = max(0.7, min(1.3, self.load_variation))
-        
-        # Apply decay and load
-        self.rpm -= rpm_decay * self.load_variation
-        
-        # Add noise and micro-vibrations
-        self.rpm += random.uniform(-8, 8)
-        
-        # Gradual RPM trends (simulates slow system changes)
-        self.rpm_trend += random.uniform(-0.3, 0.3)
-        self.rpm_trend = max(-5, min(5, self.rpm_trend))
-        self.rpm += self.rpm_trend
-        
-        # === FAN CONTROL LOGIC ===
-        if self.rpm < RPM_BASELINE and not self.fan_active:
-            self.fan_active = True
-            print(f"⚡ [T+{self.time_elapsed}s] Fan activated! RPM: {self.rpm:.1f}")
-        
-        if self.fan_active:
-            # Fan boost varies based on fan efficiency (degrades over time simulation)
-            fan_efficiency = 1.0 - 0.1 * math.sin(self.time_elapsed * 0.02)
-            rpm_boost = random.uniform(10, 15) * fan_efficiency
-            self.rpm += rpm_boost
-            
-            # Fan power varies with load
-            self.fan_power = random.uniform(2.5, 3.8) * (1 + 0.2 * math.sin(self.time_elapsed * 0.05))
-            
-            # Deactivate fan with hysteresis
-            if self.rpm > RPM_OPTIMAL + 50:  # Add buffer to prevent oscillation
-                self.fan_active = False
-                self.fan_power = 0.0
-                print(f"✓ [T+{self.time_elapsed}s] Fan deactivated. RPM: {self.rpm:.1f}")
-        else:
-            self.fan_power = 0.0
-        
-        # Constrain RPM to realistic range
-        self.rpm = max(750, min(1850, self.rpm))
-        
-        # === TEMPERATURE DYNAMICS ===
-        # Hot side temperature - affected by RPM and time-varying heat source
-        heat_source_variation = 1.0 + 0.15 * math.sin(self.time_elapsed * 0.03)
-        target_hot = 78 + (self.rpm / 80) * heat_source_variation
-        self.teg_hot_temp += (target_hot - self.teg_hot_temp) * 0.15  # Thermal inertia
-        self.teg_hot_temp += random.uniform(-1.5, 1.5)
-        
-        # Cold side temperature - affected by ambient and cooling efficiency
-        cooling_efficiency = 0.9 + 0.1 * math.sin(self.time_elapsed * 0.02)
-        target_cold = 28 + (self.ambient_temp * 0.8) / cooling_efficiency
-        self.teg_cold_temp += (target_cold - self.teg_cold_temp) * 0.12
-        self.teg_cold_temp += random.uniform(-1.2, 1.2)
-        
-        # Ambient temperature - slow drift with daily cycles
-        daily_cycle = 2.0 * math.sin(self.time_elapsed * 0.001)  # Very slow cycle
-        self.ambient_trend += random.uniform(-0.02, 0.02)
-        self.ambient_trend = max(-0.1, min(0.1, self.ambient_trend))
-        self.ambient_temp += self.ambient_trend + daily_cycle * 0.01
-        self.ambient_temp += random.uniform(-0.3, 0.3)
-        self.ambient_temp = max(22, min(34, self.ambient_temp))
-        
-        # Rotor surface temperature - correlates with RPM and friction
-        friction_heat = friction_factor * 5
-        target_rotor = 55 + (self.rpm / 45) + friction_heat
-        self.rotor_surface_temp += (target_rotor - self.rotor_surface_temp) * 0.18
-        self.rotor_surface_temp += random.uniform(-2.5, 2.5)
-        
-        # === VOLTAGE CALCULATION ===
-        # TEG voltage depends on temperature differential (Seebeck effect)
-        delta_t = self.teg_hot_temp - self.teg_cold_temp
-        
-        # Seebeck coefficient varies slightly with temperature and age
-        seebeck_coeff = 0.078 + 0.005 * math.sin(self.time_elapsed * 0.008)
-        
-        # Calculate voltage with efficiency losses
-        teg_efficiency = 0.95 + 0.05 * math.sin(self.time_elapsed * 0.015)
-        self.teg_voltage = (delta_t * seebeck_coeff * teg_efficiency)
-        self.teg_voltage += random.uniform(-0.15, 0.15)
-        self.teg_voltage = max(0, self.teg_voltage)
-    
     def write_data(self):
-        """Write sensor data to InfluxDB"""
-        
         timestamp = datetime.utcnow()
-        
-        # RPM measurement
-        rpm_point = Point("rotor_rpm") \
-            .tag("sensor", "encoder") \
-            .field("rpm", float(self.rpm)) \
-            .time(timestamp)
-        
-        # Temperature measurements
-        temp_hot_point = Point("temperature") \
-            .tag("location", "teg_hot") \
-            .field("celsius", float(self.teg_hot_temp)) \
-            .time(timestamp)
-        
-        temp_cold_point = Point("temperature") \
-            .tag("location", "teg_cold") \
-            .field("celsius", float(self.teg_cold_temp)) \
-            .time(timestamp)
-        
-        delta_t = self.teg_hot_temp - self.teg_cold_temp
-        temp_delta_point = Point("temperature") \
-            .tag("location", "teg_delta") \
-            .field("celsius", float(delta_t)) \
-            .time(timestamp)
-        
-        ambient_point = Point("temperature") \
-            .tag("location", "ambient") \
-            .field("celsius", float(self.ambient_temp)) \
-            .time(timestamp)
-        
-        rotor_temp_point = Point("temperature") \
-            .tag("location", "rotor_surface") \
-            .field("celsius", float(self.rotor_surface_temp)) \
-            .time(timestamp)
-        
-        # Voltage measurements
-        teg_voltage_point = Point("voltage") \
-            .tag("source", "teg_output") \
-            .field("volts", float(self.teg_voltage)) \
-            .time(timestamp)
-        
-        # Fan status and power
-        fan_status_point = Point("fan") \
-            .field("active", int(self.fan_active)) \
-            .field("power_watts", float(self.fan_power)) \
-            .time(timestamp)
-        
-        # Write all points
+
         points = [
-            rpm_point, temp_hot_point, temp_cold_point, temp_delta_point,
-            ambient_point, rotor_temp_point, teg_voltage_point, fan_status_point
+            Point("rotor_rpm").tag("sensor", "encoder").field("rpm", float(self.rpm)).time(timestamp),
+            
+            Point("temperature").tag("location", "teg_hot").field("celsius", float(self.teg_hot_temp)).time(timestamp),
+            Point("temperature").tag("location", "teg_cold").field("celsius", float(self.teg_cold_temp)).time(timestamp),
+            Point("temperature").tag("location", "teg_delta").field("celsius", float(self.teg_hot_temp - self.teg_cold_temp)).time(timestamp),
+            Point("temperature").tag("location", "ambient").field("celsius", float(self.ambient_temp)).time(timestamp),
+            Point("temperature").tag("location", "rotor_surface").field("celsius", float(self.rotor_surface_temp)).time(timestamp),
+            Point("temperature").tag("location", "max6675_hot").field("celsius", float(self.max6675_temp_c)).time(timestamp),
+            Point("temperature").tag("location", "ds18b20_cold").field("celsius", float(self.ds18b20_temp_c)).time(timestamp),
+
+            Point("voltage").tag("source", "teg_output").field("volts", float(self.teg_voltage)).time(timestamp),
+
+            Point("fan").field("active", int(self.fan_active)).field("power_watts", float(self.fan_power)).time(timestamp),
+
+            Point("current_sensor").field("bus_voltage", float(self.bus_voltage)).field("bus_current", float(self.bus_current)).
+                field("power_mw", float(self.power)).field("shunt_voltage_mv", float(self.shunt_voltage)).time(timestamp),
+
+            Point("air_sensor").field("temperature_c", float(self.air_temp_c)).field("temperature_f", float(self.air_temp_f)).
+                field("pressure_hpa", float(self.air_pressure)).field("humidity_percent", float(self.air_humidity)).time(timestamp)
         ]
-        
+
         try:
             self.write_api.write(bucket=INFLUXDB_BUCKET, record=points)
         except Exception as e:
             print(f"❌ Error writing to InfluxDB: {e}")
-    
+
     def print_status(self):
-        """Print current system status"""
         delta_t = self.teg_hot_temp - self.teg_cold_temp
         print(f"\n{'='*70}")
         print(f"⏱️  Time: {datetime.now().strftime('%H:%M:%S')} | Elapsed: {self.time_elapsed}s")
-        print(f"🔄 RPM: {self.rpm:7.1f} {'🌀[FAN ON]' if self.fan_active else '         '} | Load: {self.load_variation:.2f}x")
+        print(f"🔄 RPM: {self.rpm:7.1f}")
         print(f"🔥 TEG Hot:  {self.teg_hot_temp:5.1f}°C | TEG Cold: {self.teg_cold_temp:5.1f}°C | ΔT: {delta_t:5.1f}°C")
-        print(f"🌡️  Ambient: {self.ambient_temp:5.1f}°C | Rotor:    {self.rotor_surface_temp:5.1f}°C")
-        print(f"⚡ TEG Out:  {self.teg_voltage:5.2f}V  | Fan:      {self.fan_power:5.2f}W")
+        print(f"🌡️  Ambient: {self.ambient_temp:5.1f}°C | Rotor Surface: {self.rotor_surface_temp:5.1f}°C")
+        print(f"⚡ Voltage: {self.teg_voltage:5.2f}V | Fan Power: {self.fan_power:5.2f}W")
+        print(f"⚡ Current Sensor: Bus Voltage={self.bus_voltage:.2f}V, Current={self.bus_current:.2f}mA, Power={self.power:.2f}mW, Shunt={self.shunt_voltage:.2f}mV")
+        print(f"🌬️  Air Sensor: Temp={self.air_temp_c:.2f}°C ({self.air_temp_f:.2f}°F), Pressure={self.air_pressure:.2f}hPa, Humidity={self.air_humidity:.2f}%")
+        print(f"🌡️  Cold Side Temp (DS18B20): {self.ds18b20_temp_c:.2f}°C")
+        print(f"🔥 Hot Side Temp (MAX6675): {self.max6675_temp_c:.2f}°C")
         print(f"{'='*70}")
     
+
+    def collect_sensor_data(self):
+        self.time_elapsed += 1
+        
+        # Collect IR sensor data
+        self.ambient_temp = self.ir_sensor.get_amb_temp()
+        self.teg_hot_temp = self.ir_sensor.get_obj_temp()
+
+        # Collect Current sensor data
+        try:
+            self.bus_voltage = self.current_sensor.voltage()
+            self.bus_current = self.current_sensor.current()
+            self.power = self.current_sensor.power()
+            self.shunt_voltage = self.current_sensor.shunt_voltage()
+        except DeviceRangeError as e:
+            print(f"Current sensor error: {e}")
+            self.bus_voltage = None
+            self.bus_current = None
+            self.power = None
+            self.shunt_voltage = None
+        
+        # collect air sensor data
+        try:
+            data = bme280.sample(self.bus, self.bme280_address, self.bme280_calibration_params)
+            self.air_temp_c = data.temperature
+            self.air_temp_f = celsius_to_fahrenheit(data.temperature)
+            self.air_pressure = data.pressure
+            self.air_humidity = data.humidity
+        except Exception as e:
+            print(f"Error reading air sensor: {e}")
+            self.air_temp_c = None
+            self.air_temp_f = None
+            self.air_pressure = None
+            self.air_humidity = None
+
+        #collect cold side data
+        try:
+            self.ds18b20_temp_c = self.ds18b20_sensor.get_temperature()
+        except Exception as e:
+            print(f"Error reading DS18B20 sensor: {e}")
+            self.ds18b20_temp_c = None
+
+        #collect rpm data
+        start_time = time.time()
+        start_count = self.pulse_count
+        time.sleep(1)
+        end_count = self.pulse_count
+
+        pulses = end_count - start_count
+        if pulses > 0:
+            elapsed = time.time() - start_time
+            self.rpm = (pulses / self.MARKS_PER_REV) / elapsed * 60.0
+        else:
+            self.rpm = 0.0
+
+        #collect hot side data
+        try:
+            self.max6675_temp_c = max6675.read_temp(self.cs)
+            # note: if sensor error occurs it may return a negative number like -22
+            if isinstance(self.max6675_temp_c, (int, float)) and self.max6675_temp_c > 0:
+                self.max6675_temp_c = round(self.max6675_temp_c, 2)
+            else:
+                print(f"MAX6675 sensor read error: {self.max6675_temp_c}")
+        except Exception as e:
+            print(f"Error reading MAX6675: {e}")
+            self.max6675_temp_c = None
+
+
+
+
+
+        
+
+
+
     def run(self, interval=1.0):
         """Run the simulation"""
         iteration = 0
         try:
             while True:
-                self.simulate_physics()
+                # self.simulate_physics()
                 self.write_data()
                 
                 # Print status every 5 iterations
@@ -230,6 +239,7 @@ class TEGRotorSimulator:
             print(f"\n\n❌ Error: {e}")
         finally:
             self.client.close()
+            GPIO.cleanup()
             print("👋 Connection closed")
 
 if __name__ == "__main__":
