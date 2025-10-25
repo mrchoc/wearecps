@@ -16,7 +16,8 @@ services:
     image: grafana/grafana-oss:latest
     container_name: grafana
     volumes:
-      - grafana-storage:/var/lib/grafana:rw
+      - ./grafana-dashboards:/var/lib/grafana/dashboards:rw
+      - ./grafana-provisioning:/etc/grafana/provisioning:rw
     depends_on:
       - influxdb
     ports:
@@ -43,9 +44,10 @@ services:
     env_file:
       - .env
     command: http grafana:3000
+    depends_on:
+      - grafana
     ports:
       - 4040:4040
 
 volumes:
-  grafana-storage:
   influxdb-storage:
