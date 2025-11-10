@@ -1,0 +1,12 @@
+version: 3
+
+agent:
+  authtoken: 34WLyR7XPri9jA6dLAmFGs7Qlex_4Pn6vMkHunugMuWLdPZxS
+
+tunnels:
+  grafana:
+    addr: 3000
+    proto: http
+  influxdb:
+    addr: 8086
+    proto: http

@@ -38,9 +38,9 @@ services:
       - "/dev/spidev0.0:/dev/spidev0.0"
     volumes:
       - /sys/bus/w1/devices:/sys/bus/w1/devices:ro
-  ngrok:
+  ngrok-grafana:
     image: ngrok/ngrok:latest
-    container_name: ngrok
+    container_name: ngrok-grafana
     env_file:
       - .env
     command: http grafana:3000
@@ -48,6 +48,16 @@ services:
       - grafana
     ports:
       - 4040:4040
+  ngrok-influxdb:
+    image: ngrok/ngrok:latest
+    container_name: ngrok-influxdb
+    environment:
+      - NGROK_AUTHTOKEN=1pY317DZq0euZVs19ewxasP0Y01_8aimxirtXnzmDzZWZXrGP
+    command: http influxdb:8086
+    depends_on:
+      - influxdb
+    ports:
+      - 4041:4040
 
 volumes:
   influxdb-storage:

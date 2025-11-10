@@ -12,9 +12,9 @@
 import max6675
 
 # set the pin for communicate with MAX6675
-cs = 19
-sck = 23
-so = 21
+cs = 10
+sck = 11
+so = 9
 
 # max6675.set_pin(CS, SCK, SO, unit)   [unit : 0 - raw, 1 - Celsius, 2 - Fahrenheit]
 max6675.set_pin(cs, sck, so, 1)
