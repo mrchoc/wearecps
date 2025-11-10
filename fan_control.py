@@ -1,5 +1,14 @@
 import RPi.GPIO as GPIO
 import time
+from signal import SIGINT, signal
+
+def stop_fan(_num, _frame):
+    # Turn the MOSFET off (pin LOW)
+    GPIO.output(mosfet_pin, GPIO.LOW)
+    print("MOSFET is OFF")
+    exit(0)
+
+signal(SIGINT, stop_fan)
 
 # Set GPIO mode to BCM
 GPIO.setmode(GPIO.BCM) 
@@ -17,9 +26,7 @@ print("MOSFET is ON")
 # Keep it on for a few seconds
 time.sleep(60) 
 
-# Turn the MOSFET off (pin LOW)
-GPIO.output(mosfet_pin, GPIO.LOW)
-print("MOSFET is OFF")
+stop_fan(None, None)
 
 # Clean up GPIO on exit
 GPIO.cleanup()
