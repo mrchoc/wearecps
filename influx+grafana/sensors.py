@@ -112,3 +112,24 @@ def rpm_sensor():
     # print(f"Average RPS: {rps:.2f}")
 
     return sum(rpm_counts)/len(rpm_counts)*60
+
+INSTANT_RPM_PIN = 23
+GPIO.setup(INSTANT_RPM_PIN , GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+# formula = 1 / (interval * blades) * 60
+# assuming interval is in seconds
+NUM_BLADES = 5
+RECIPROCAL_COEFFICIENT = 60 / NUM_BLADES
+
+def instant_rpm():
+    start_time = time.time()
+    while True:
+        GPIO.wait_for_edge(INSTANT_RPM_PIN, GPIO.RISING)
+
+        end_time = time.time()
+
+        rpm = RECIPROCAL_COEFFICIENT / (end_time - start_time)
+
+        start_time = time.time()
+
+        yield rpm

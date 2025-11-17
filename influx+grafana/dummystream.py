@@ -2,10 +2,11 @@
 import time
 import random
 import math
+import threading
 from datetime import datetime
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
-from sensors import air_sensor, current_sensor_voltage, current_sensor_power, ir_temp, cold_side_temp, hot_side_temp, rpm_sensor
+from sensors import air_sensor, current_sensor_voltage, current_sensor_power, ir_temp, cold_side_temp, hot_side_temp, rpm_sensor, instant_rpm
 from ds18b20 import DS18B20
 import os
 
@@ -157,7 +158,7 @@ class TEGRotorSimulator:
         
         # RPM measurement
         rpm_point = Point("rotor_rpm") \
-            .tag("sensor", "encoder") \
+            .tag("rpm", "average") \
             .field("rpm", float(self.rpm)) \
             .time(timestamp)
         
@@ -221,9 +222,26 @@ class TEGRotorSimulator:
         print(f"🌡️  Ambient: {self.ambient_temp:5.1f}°C | Rotor:    {self.rotor_surface_temp:5.1f}°C")
         print(f"⚡ TEG Out:  {self.teg_voltage:5.2f}V  | Fan:      {self.fan_power:5.2f}W")
         print(f"{'='*70}")
+
+    def write_instant_rpm(self):
+        """Writes the instantaneous RPM directly to InfluxDB"""
+        for rpm_value in instant_rpm():
+            print(rpm_value)
+            rpm_point = Point.from_dict({
+                "measurement": "rotor_instant_rpm",
+                "tags": {"rpm": "instant"},
+                "fields": {"rpm": rpm_value},
+                "time": datetime.utcnow()
+            })
+            try:
+                self.write_api.write(bucket=INFLUXDB_BUCKET, record=rpm_point)
+            except Exception as e:
+                print(f"❌ Error writing to InfluxDB: {e}")
     
     def run(self, interval=1.0):
         """Run the simulation"""
+        self.rpm_thread = threading.Thread(target=self.write_instant_rpm, daemon=False)
+        self.rpm_thread.start()
         iteration = 0
         try:
             while True:

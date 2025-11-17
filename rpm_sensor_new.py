@@ -2,7 +2,7 @@ import RPi.GPIO as GPIO
 import time
 
 # --- CONFIGURATION ---
-SENSOR_PIN = 17     # GPIO pin connected to TCRT5000 output
+SENSOR_PIN = 23     # GPIO pin connected to TCRT5000 output
 NUM_BLADES = 2
 
 # formula = 1 / (interval * blades) * 60
