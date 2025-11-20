@@ -68,7 +68,7 @@ def air_sensor():
 
 def current_sensor_voltage():
     try:
-        return 11 - ina.voltage()
+        return ina.voltage()
     except DeviceRangeError as e:
         # Current out of device range with specified shunt resistor
         print(e)
