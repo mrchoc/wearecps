@@ -6,7 +6,7 @@ import threading
 from datetime import datetime
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
-from sensors import air_sensor, current_sensor_voltage, current_sensor_power, ir_temp, cold_side_temp, hot_side_temp, rpm_sensor, instant_rpm
+from sensors import air_sensor, current_sensor_voltage, current_sensor_power, ir_temp, cold_side_temp, hot_side_temp, rpm_sensor, instant_rpm, set_fan_state
 from ds18b20 import DS18B20
 import os
 
@@ -17,8 +17,7 @@ INFLUXDB_ORG = os.getenv('INFLUXDB_ORG', 'myorg')
 INFLUXDB_BUCKET = os.getenv('INFLUXDB_BUCKET', 'teg_rotor')
 
 # Simulation parameters
-RPM_BASELINE = 1200  # RPM threshold for fan activation
-RPM_OPTIMAL = 1500   # Target RPM when fan is active
+RPM_THRESHOLD = 50  # RPM threshold for fan activation
 
 cold_side_sensor = DS18B20("0000007c086a", False)
 
@@ -60,6 +59,7 @@ class TEGRotorSimulator:
         self.rotor_surface_temp = float(ir_temp())
         self.teg_voltage = float(current_sensor_voltage())
         self.fan_power = float(current_sensor_power())
+        self.fan_active = set_fan_state(self.rpm < RPM_THRESHOLD)
     
     def simulate_physics(self):
         """Simulate realistic physics with continuous variation"""
@@ -226,7 +226,6 @@ class TEGRotorSimulator:
     def write_instant_rpm(self):
         """Writes the instantaneous RPM directly to InfluxDB"""
         for rpm_value in instant_rpm():
-            print(rpm_value)
             rpm_point = Point.from_dict({
                 "measurement": "rotor_instant_rpm",
                 "tags": {"rpm": "instant"},

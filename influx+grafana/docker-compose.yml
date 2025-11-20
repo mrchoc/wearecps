@@ -8,6 +8,8 @@ services:
     env_file:
       - .env
     entrypoint: ["./entrypoint.sh"]
+    environment:
+            GF_INSTALL_PLUGINS: volkovlabs-form-panel
     restart: on-failure:10
     ports:
       - ${DOCKER_INFLUXDB_INIT_PORT}:8086
@@ -52,12 +54,21 @@ services:
     image: ngrok/ngrok:latest
     container_name: ngrok-influxdb
     environment:
-      - NGROK_AUTHTOKEN=1pY317DZq0euZVs19ewxasP0Y01_8aimxirtXnzmDzZWZXrGP
+      - NGROK_AUTHTOKEN=35jwfFv5NZsCLI9NoZbfq64NKG4_4N4TYtd3QdzjXg1xzxNhf
     command: http influxdb:8086
     depends_on:
       - influxdb
     ports:
       - 4041:4040
+  nginx:
+    image: nginx:latest
+    container_name: nginx-proxy
+    ports:
+      - "8087:8087"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:rw
+    depends_on:
+      - influxdb
 
 volumes:
   influxdb-storage:

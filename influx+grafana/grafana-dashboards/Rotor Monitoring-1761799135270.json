@@ -307,7 +307,7 @@
       "pluginVersion": "12.2.1",
       "targets": [
         {
-          "query": "from(bucket: \"teg_rotor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"rotor_rpm\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rpm\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"teg_rotor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"rotor_rpm\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rpm\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"last\")",
           "refId": "A"
         }
       ],
@@ -633,7 +633,7 @@
       "pluginVersion": "12.2.1",
       "targets": [
         {
-          "query": "from(bucket: \"teg_rotor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"fan\")\n  |> filter(fn: (r) => r[\"_field\"] == \"active\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"teg_rotor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"fan\")\n  |> filter(fn: (r) => r[\"_field\"] == \"active\")",
           "refId": "A"
         }
       ],
@@ -872,7 +872,7 @@
             "type": "influxdb",
             "uid": "ff23dqejivshsf"
           },
-          "query": "from(bucket: \"teg_rotor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"rotor_rpm\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rpm\")\n  |> filter(fn: (r) => r[\"sensor\"] == \"encoder\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"teg_rotor\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"rotor_rpm\")\n  |> filter(fn: (r) => r[\"_field\"] == \"rpm\")\n  |> filter(fn: (r) => r[\"sensor\"] == \"encoder\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"last\")",
           "refId": "A"
         }
       ],

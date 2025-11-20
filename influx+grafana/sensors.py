@@ -7,6 +7,7 @@ from ina219 import INA219
 from ina219 import DeviceRangeError
 from smbus2 import SMBus
 from mlx90614 import MLX90614
+import pigpio
 
 GPIO.setmode(GPIO.BCM)
 
@@ -18,6 +19,7 @@ ina.configure()
 # rpm sensor
 pulse_count = 0
 last_count = 0
+last_time = time.time()
 rpm_counts = []
 start_time = time.time()
 def pulse_callback(channel):
@@ -66,7 +68,7 @@ def air_sensor():
 
 def current_sensor_voltage():
     try:
-        return ina.voltage()
+        return 11 - ina.voltage()
     except DeviceRangeError as e:
         # Current out of device range with specified shunt resistor
         print(e)
@@ -94,9 +96,10 @@ def hot_side_temp():
     return temp
 
 def rpm_sensor():
-    MARKS_PER_REV = 1   # number of reflective marks on the rotating disk
+    MARKS_PER_REV = 5   # number of reflective marks on the rotating disk
 
     global last_count
+    global last_time
     pulses = pulse_count - last_count
     last_count = pulse_count
     if len(rpm_counts) >= 60:
@@ -104,14 +107,15 @@ def rpm_sensor():
     rpm_counts.append(pulses/MARKS_PER_REV)
 
     current_time = time.time()
-    seconds_since_start = current_time - start_time
-    rps = pulse_count / seconds_since_start
+    seconds = current_time - last_time
+    rps = pulses / seconds
+    last_time = current_time
 
     # print(f"Current RPM: {sum(rpm_counts)/len(rpm_counts)*60:.2f}")
     # print(f"Average RPM: {rps*60:.2f}")
     # print(f"Average RPS: {rps:.2f}")
 
-    return sum(rpm_counts)/len(rpm_counts)*60
+    return rps * 60 / MARKS_PER_REV
 
 INSTANT_RPM_PIN = 23
 GPIO.setup(INSTANT_RPM_PIN , GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -133,3 +137,10 @@ def instant_rpm():
         start_time = time.time()
 
         yield rpm
+
+FAN_GPIO = 18
+GPIO.setup(FAN_GPIO, GPIO.OUT)
+
+def set_fan_state(boolean):
+    GPIO.output(FAN_GPIO, GPIO.HIGH if boolean else GPIO.LOW)
+    return boolean

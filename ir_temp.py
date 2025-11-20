@@ -7,8 +7,8 @@ sensor = MLX90614(bus, address=0x5A)
 
 while True:
     try:
-        print(f'Ambient temperature: {sensor.get_amb_temp()}')
-        print(f'Object temperature: {sensor.get_obj_temp()}')
+        print(f'Ambient temperature: {sensor.get_amb_temp():0.2f}')
+        print(f'Object temperature: {sensor.get_obj_temp():0.2f}')
 
         time.sleep(1)
     except KeyboardInterrupt:

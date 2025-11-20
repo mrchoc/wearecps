@@ -14,4 +14,4 @@ COPY dummystream.py .
 # Install curl for health checking
 # Install required Python packages
 # Wait for InfluxDB to be ready, then run the script
-CMD ["/bin/bash", "-c", "while ! curl -s http://influxdb:8086/health | grep -q '\"status\":\"pass\"'; do echo 'Waiting for InfluxDB to be ready...'; sleep 2; done && echo 'InfluxDB is ready! Starting data streamer...' && python dummystream.py"]
+CMD ["/bin/bash", "-c", "/usr/bin/pigpiod; while ! curl -s http://influxdb:8086/health | grep -q '\"status\":\"pass\"'; do echo 'Waiting for InfluxDB to be ready...'; sleep 2; done && echo 'InfluxDB is ready! Starting data streamer...' && python dummystream.py"]

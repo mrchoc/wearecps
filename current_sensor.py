@@ -15,6 +15,7 @@ def read():
         print("Bus Current: %.3f mA" % ina.current())
         print("Power: %.3f mW" % ina.power())
         print("Shunt voltage: %.3f mV" % ina.shunt_voltage())
+        print()
     except DeviceRangeError as e:
         # Current out of device range with specified shunt resistor
         print(e)
